@@ -1,0 +1,56 @@
+[package]
+name = "q_shell"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cubething-qproj/q_shell"
+
+[dependencies]
+bevy = "0.19"
+tiny_bail = "0.7"
+q_proc = { git = "https://github.com/cubething-qproj/q_proc" }
+
+[lints]
+rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
+clippy.too_many_arguments = "allow"
+clippy.type_complexity = "allow"
+clippy.nonstandard_macro_braces = "warn"
+
+[workspace]
+resolver = "3"
+
+[workspace.lints]
+rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
+clippy.too_many_arguments = "allow"
+clippy.type_complexity = "allow"
+clippy.nonstandard_macro_braces = "warn"
+
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dist]
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

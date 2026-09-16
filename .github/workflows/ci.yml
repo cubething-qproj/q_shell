@@ -1,0 +1,16 @@
+name: CI
+on:
+    push:
+        branches: ["main", "release/*"]
+    pull_request:
+
+jobs:
+    pipeline:
+        permissions:
+            contents: write
+            pull-requests: write
+            issues: write
+            id-token: write
+        uses: cubething-qproj/infra/.github/workflows/downstream-pipeline.yml@main
+        secrets:
+            DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
