@@ -9,18 +9,9 @@ repository = "https://github.com/cubething-qproj/q_shell"
 bevy = "0.19"
 tiny_bail = "0.7"
 q_proc = { git = "https://github.com/cubething-qproj/q_proc" }
-q_term = { path = "../q_term" }
+q_term = { git = "https://github.com/cubething-qproj/q_term" }
 
 [lints]
-rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
-clippy.too_many_arguments = "allow"
-clippy.type_complexity = "allow"
-clippy.nonstandard_macro_braces = "warn"
-
-[workspace]
-resolver = "3"
-
-[workspace.lints]
 rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
 clippy.too_many_arguments = "allow"
 clippy.type_complexity = "allow"
