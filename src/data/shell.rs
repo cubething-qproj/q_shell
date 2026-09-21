@@ -42,9 +42,19 @@ impl ShellSpawnMsg {
     }
 }
 
-/// Attached to the [`Terminal`] when spawning a [`Shell`].
+/// Marks a terminal entity as a byte-oriented process I/O endpoint.
+#[derive(Component, Reflect, Debug, Default)]
+pub struct TerminalIoEndpoint;
+
+impl IoComponent for TerminalIoEndpoint {
+    type Stdin = Vec<u8>;
+    type Stdout = Vec<u8>;
+}
+
+/// Attached to the terminal when spawning a [`Shell`].
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = Shell)]
+#[require(TerminalIoEndpoint)]
 pub struct ShellTarget(Entity);
 impl ShellTarget {
     pub fn target(&self) -> Entity {

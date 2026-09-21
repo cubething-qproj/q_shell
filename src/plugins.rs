@@ -9,6 +9,7 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         use crate::systems::spawn::*;
         app.add_message::<ShellSpawnMsg>();
+        app.register_io_component::<TerminalIoEndpoint>();
         app.add_systems(Update, spawn_process);
     }
 }
