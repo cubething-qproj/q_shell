@@ -70,6 +70,38 @@ pub(crate) fn backfill_terminal_foreground(app: &mut App) {
     }
 }
 
+pub(crate) fn hang_up_terminal(
+    removed: On<Remove, TerminalIoEndpoint>,
+    terminals: Query<&ShellTarget<TerminalIoEndpoint>>,
+    jobs: Query<(Entity, &ShellJob)>,
+    foreground: Query<&VtForegroundProcessTarget>,
+    signals: Option<MessageWriter<SignalMsg>>,
+    mut commands: Commands,
+) {
+    let shell = r!(terminals.get(removed.entity)).target();
+    if let Ok(foreground) = foreground.get(removed.entity) {
+        commands
+            .entity(foreground.process())
+            .remove::<VtForegroundProcess>();
+    }
+
+    let mut signals = r!(signals);
+    signals.write(SignalMsg {
+        term: removed.entity,
+        target: shell,
+        signal: Sig::Hup,
+    });
+    for (job, owner) in &jobs {
+        if owner.0 == shell {
+            signals.write(SignalMsg {
+                term: removed.entity,
+                target: job,
+                signal: Sig::Hup,
+            });
+        }
+    }
+}
+
 pub(crate) fn write_terminal_output(
     mut process_writes: MessageReader<EndpointWriteMsg<Vec<u8>>>,
     terminal_endpoints: Query<(), With<TerminalIoEndpoint>>,
@@ -277,6 +309,63 @@ mod tests {
             .get::<VtForegroundProcessTarget>()
             .expect("the existing foreground selection should be projected");
         assert_eq!(foreground.process(), process);
+    }
+
+    fn assert_terminal_close_sends_hup(despawn: bool) {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        let (terminal, shell, process) = spawn_shell_process(&mut app);
+
+        if despawn {
+            app.world_mut().despawn(terminal);
+        } else {
+            app.world_mut()
+                .entity_mut(terminal)
+                .remove::<TerminalIoEndpoint>();
+        }
+        app.update();
+
+        let mut targets = app
+            .world_mut()
+            .resource_mut::<Messages<SignalMsg>>()
+            .drain()
+            .filter(|signal| signal.signal == Sig::Hup && signal.term == terminal)
+            .map(|signal| signal.target)
+            .collect::<Vec<_>>();
+        targets.sort();
+        let mut expected = vec![shell, process];
+        expected.sort();
+        assert_eq!(targets, expected);
+        let process_entity = app.world().entity(process);
+        let descriptors = process_entity
+            .get::<ProcessFdTable>()
+            .expect("the process should still have a descriptor table");
+        for fd in [
+            FileDescriptor::STDIN,
+            FileDescriptor::STDOUT,
+            FileDescriptor::STDERR,
+        ] {
+            assert_eq!(descriptors.get(fd), None);
+        }
+        assert!(!process_entity.contains::<VtForegroundProcess>());
+        if !despawn {
+            assert!(
+                app.world()
+                    .entity(terminal)
+                    .get::<VtForegroundProcessTarget>()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_endpoint_removal_sends_hup_and_closes_descriptors() {
+        assert_terminal_close_sends_hup(false);
+    }
+
+    #[test]
+    fn terminal_despawn_sends_hup_and_closes_descriptors() {
+        assert_terminal_close_sends_hup(true);
     }
 
     #[test]

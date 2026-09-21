@@ -2,9 +2,31 @@
 
 use std::marker::PhantomData;
 
-use bevy::ecs::schedule::{InternedScheduleLabel, ScheduleLabel};
+use bevy::ecs::schedule::{ApplyDeferred, InternedScheduleLabel, ScheduleLabel};
 
 use crate::prelude::*;
+
+/// Ordered shell-management phases.
+#[derive(SystemSet, Debug, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ShellSystems {
+    /// Spawn requested shell jobs.
+    Spawn,
+    /// Apply foreground job-control transitions.
+    Foreground,
+}
+
+/// Ordered shell I/O integration phases.
+#[derive(SystemSet, Debug, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ShellIoSystems {
+    /// Project q_shell foreground state into the selected I/O backend.
+    SyncForeground,
+    /// Clean relationships belonging to removed processes.
+    Cleanup,
+    /// Translate routed process output into backend writes.
+    ProcessOutput,
+    /// Translate backend replies into process input.
+    TerminalReplies,
+}
 
 /// An I/O endpoint component that can back a [`Shell`].
 ///
@@ -21,14 +43,13 @@ impl ShellIo for TerminalIoEndpoint {
         app.add_observer(set_shell_foreground);
         app.add_observer(set_process_foreground);
         app.add_observer(fallback_to_shell_foreground);
+        app.add_observer(hang_up_terminal);
         backfill_terminal_foreground(app);
         app.add_systems(
             schedule,
             (
-                write_terminal_output
-                    .after(ProcessSystems::RouteWrites)
-                    .before(TerminalSystems::Process),
-                route_terminal_replies.after(TerminalSystems::Process),
+                write_terminal_output.in_set(ShellIoSystems::ProcessOutput),
+                route_terminal_replies.in_set(ShellIoSystems::TerminalReplies),
             ),
         );
     }
@@ -59,10 +80,45 @@ impl<T: ShellIo> ShellPlugin<T> {
 
 impl<T: ShellIo> Plugin for ShellPlugin<T> {
     fn build(&self, app: &mut App) {
-        use crate::systems::spawn::*;
+        use crate::systems::{lifecycle::*, spawn::*};
         app.add_message::<ShellSpawnMsg>();
         app.register_io_component::<T>();
-        app.add_systems(self.update_schedule, spawn_process::<T>);
+        app.add_observer(cleanup_removed_process);
+        app.configure_sets(
+            self.update_schedule,
+            (
+                TerminalSystems::Input,
+                ShellSystems::Spawn,
+                ShellSystems::Foreground,
+                ShellIoSystems::SyncForeground,
+                ProcessSystems::RunPrograms,
+            )
+                .chain(),
+        );
+        app.configure_sets(
+            self.update_schedule,
+            (
+                ShellIoSystems::Cleanup.after(ProcessSystems::Cleanup),
+                ShellIoSystems::ProcessOutput
+                    .after(ShellIoSystems::Cleanup)
+                    .before(TerminalSystems::Process),
+                ShellIoSystems::TerminalReplies
+                    .after(TerminalSystems::Process)
+                    .before(TerminalSystems::Render),
+            ),
+        );
+        app.add_systems(
+            self.update_schedule,
+            (
+                spawn_process::<T>.in_set(ShellSystems::Spawn),
+                ApplyDeferred
+                    .after(ShellIoSystems::SyncForeground)
+                    .before(ProcessSystems::RunPrograms),
+                ApplyDeferred
+                    .after(ShellIoSystems::Cleanup)
+                    .before(ShellIoSystems::ProcessOutput),
+            ),
+        );
         T::add_systems(app, self.update_schedule);
     }
 }
