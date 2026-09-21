@@ -4,14 +4,78 @@ use std::any::TypeId;
 
 use crate::prelude::*;
 
+pub(crate) fn set_shell_foreground(
+    added: On<Add, Shell<TerminalIoEndpoint>>,
+    shells: Query<&Shell<TerminalIoEndpoint>>,
+    mut commands: Commands,
+) {
+    let shell = r!(shells.get(added.entity));
+    commands
+        .entity(added.entity)
+        .insert(VtForegroundProcess::new(shell.term));
+}
+
+pub(crate) fn set_process_foreground(
+    added: On<Add, ForegroundInputProcess>,
+    foreground: Query<&ForegroundInputProcess>,
+    shells: Query<&Shell<TerminalIoEndpoint>>,
+    mut commands: Commands,
+) {
+    let foreground = r!(foreground.get(added.entity));
+    let shell = r!(shells.get(foreground.shell()));
+    commands
+        .entity(added.entity)
+        .insert(VtForegroundProcess::new(shell.term));
+}
+
+pub(crate) fn fallback_to_shell_foreground(
+    removed: On<Remove, ForegroundInputProcess>,
+    foreground: Query<&ForegroundInputProcess>,
+    mut commands: Commands,
+) {
+    let shell = r!(foreground.get(removed.entity)).shell();
+    commands.queue(move |world: &mut World| {
+        if world.get::<ForegroundInputProcessTarget>(shell).is_some() {
+            return;
+        }
+        let term = r!(world.get::<Shell<TerminalIoEndpoint>>(shell)).term;
+        world
+            .entity_mut(shell)
+            .insert(VtForegroundProcess::new(term));
+    });
+}
+
+pub(crate) fn backfill_terminal_foreground(app: &mut App) {
+    let foreground = {
+        let world = app.world_mut();
+        let mut shells = world.query::<(
+            Entity,
+            &Shell<TerminalIoEndpoint>,
+            Option<&ForegroundInputProcessTarget>,
+        )>();
+        shells
+            .iter(world)
+            .map(|(shell_entity, shell, process)| {
+                (
+                    process.map_or(shell_entity, ForegroundInputProcessTarget::process),
+                    shell.term,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    for (peer, term) in foreground {
+        app.world_mut()
+            .entity_mut(peer)
+            .insert(VtForegroundProcess::new(term));
+    }
+}
+
 pub(crate) fn write_terminal_output(
     mut process_writes: MessageReader<EndpointWriteMsg<Vec<u8>>>,
     terminal_endpoints: Query<(), With<TerminalIoEndpoint>>,
     terminal_writes: Option<MessageWriter<VtWriteMsg>>,
 ) {
-    let Some(mut terminal_writes) = terminal_writes else {
-        return;
-    };
+    let mut terminal_writes = r!(terminal_writes);
     for write in process_writes
         .read()
         .filter(|write| write.endpoint().component_type_id() == TypeId::of::<TerminalIoEndpoint>())
@@ -25,6 +89,33 @@ pub(crate) fn write_terminal_output(
             terminal,
             write.process(),
             write.payload().clone(),
+        ));
+    }
+}
+
+pub(crate) fn route_terminal_replies(
+    replies: Option<MessageReader<VtReplyMsg>>,
+    terminals: Query<&VtForegroundProcessTarget, With<TerminalIoEndpoint>>,
+    processes: Query<&ProcessFdTable, With<Process>>,
+    mut input: MessageWriter<ProcessInputMsg<Vec<u8>>>,
+) {
+    let mut replies = r!(replies);
+    for reply in replies.read() {
+        let foreground = c!(terminals.get(reply.term));
+        let process = foreground.process();
+        let descriptors = c!(processes.get(process));
+        let endpoint = c!(descriptors.get(FileDescriptor::STDIN));
+        if endpoint.entity() != reply.term
+            || endpoint.component_type_id() != TypeId::of::<TerminalIoEndpoint>()
+        {
+            warn!("Discarding terminal reply for process {process:?} whose stdin was redirected");
+            continue;
+        }
+        input.write(ProcessInputMsg::new(
+            process,
+            FileDescriptor::STDIN,
+            endpoint,
+            reply.bytes.clone(),
         ));
     }
 }
@@ -48,6 +139,25 @@ mod tests {
         mut observed: ResMut<ObservedWrite>,
     ) {
         observed.0 = writes.read().next().cloned();
+    }
+
+    fn spawn_shell_process(app: &mut App) -> (Entity, Entity, Entity) {
+        let terminal = app.world_mut().spawn_empty().id();
+        let shell = app
+            .world_mut()
+            .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
+            .id();
+        app.world_mut()
+            .write_message(ShellSpawnMsg::new(TestProgram, shell));
+        app.update();
+        let process = {
+            let world = app.world_mut();
+            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            processes
+                .single(world)
+                .expect("the shell should spawn one process")
+        };
+        (terminal, shell, process)
     }
 
     #[test]
@@ -102,5 +212,101 @@ mod tests {
         assert_eq!(observed.term, terminal);
         assert_eq!(observed.from, Some(process));
         assert_eq!(observed.bytes, b"hello");
+    }
+
+    #[test]
+    fn spawned_process_becomes_the_terminal_foreground_peer() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        let (terminal, _, process) = spawn_shell_process(&mut app);
+
+        let foreground = app
+            .world()
+            .entity(terminal)
+            .get::<VtForegroundProcessTarget>()
+            .expect("the terminal should have a foreground peer");
+        assert_eq!(foreground.process(), process);
+    }
+
+    #[test]
+    fn backgrounded_process_restores_the_shell_foreground_peer() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        let (terminal, shell, process) = spawn_shell_process(&mut app);
+
+        app.world_mut()
+            .entity_mut(process)
+            .remove::<ForegroundInputProcess>();
+        app.update();
+
+        let foreground = app
+            .world()
+            .entity(terminal)
+            .get::<VtForegroundProcessTarget>()
+            .expect("the terminal should fall back to its shell");
+        assert_eq!(foreground.process(), shell);
+    }
+
+    #[test]
+    fn existing_foreground_selection_is_backfilled_on_plugin_registration() {
+        let mut app = App::new();
+        app.add_plugins(ProcessPlugin);
+
+        let terminal = app.world_mut().spawn_empty().id();
+        let shell = app
+            .world_mut()
+            .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
+            .id();
+        let process = app
+            .world_mut()
+            .spawn((
+                Process {
+                    prog: TestProgram.intern(),
+                    signal_overrides: HashMap::new(),
+                    argv: Vec::new(),
+                    environ: HashMap::new(),
+                },
+                ForegroundInputProcess::new(shell),
+            ))
+            .id();
+
+        app.add_plugins(ShellPlugin::<TerminalIoEndpoint>::default());
+        let foreground = app
+            .world()
+            .entity(terminal)
+            .get::<VtForegroundProcessTarget>()
+            .expect("the existing foreground selection should be projected");
+        assert_eq!(foreground.process(), process);
+    }
+
+    #[test]
+    fn terminal_reply_reaches_foreground_process_on_the_next_first_pass() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_message::<VtReplyMsg>();
+        let (terminal, _, process) = spawn_shell_process(&mut app);
+
+        app.world_mut()
+            .write_message(VtReplyMsg::new(terminal, b"reply".to_vec()));
+        app.update();
+        assert!(
+            app.world()
+                .entity(process)
+                .get::<ProcessInputBuffer<Vec<u8>>>()
+                .expect("the process should have a byte input buffer")
+                .get(&FileDescriptor::STDIN)
+                .is_none()
+        );
+
+        app.update();
+        let input = app
+            .world()
+            .entity(process)
+            .get::<ProcessInputBuffer<Vec<u8>>>()
+            .expect("the process should have a byte input buffer")
+            .get(&FileDescriptor::STDIN)
+            .expect("the next First pass should demux the reply");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0].as_slice(), b"reply");
     }
 }

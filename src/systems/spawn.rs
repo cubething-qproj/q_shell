@@ -26,12 +26,7 @@ pub fn spawn_process<T: ShellIo>(
                     .resource::<IoComponentCache>()
                     .handle::<T>(terminal_entity, &endpoints)
             };
-            let Some(terminal) = terminal else {
-                warn!(
-                    "Cannot spawn process for shell {shell_id:?}: terminal endpoint is unavailable"
-                );
-                return;
-            };
+            let terminal = r!(terminal);
 
             let mut descriptors = ProcessFdTable::default();
             descriptors.set(FileDescriptor::STDIN, terminal);
@@ -48,6 +43,7 @@ pub fn spawn_process<T: ShellIo>(
                 descriptors,
                 ShellJob(shell_id),
                 ForegroundProcess::new(shell_id),
+                ForegroundInputProcess::new(shell_id),
             );
             debug!("Spawned process {process:?}");
             world.spawn(process);

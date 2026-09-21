@@ -18,11 +18,18 @@ pub trait ShellIo: IoComponent + Default {
 impl ShellIo for TerminalIoEndpoint {
     fn add_systems(app: &mut App, schedule: InternedScheduleLabel) {
         use crate::systems::io::*;
+        app.add_observer(set_shell_foreground);
+        app.add_observer(set_process_foreground);
+        app.add_observer(fallback_to_shell_foreground);
+        backfill_terminal_foreground(app);
         app.add_systems(
             schedule,
-            write_terminal_output
-                .after(ProcessSystems::RouteWrites)
-                .before(TerminalSystems::Process),
+            (
+                write_terminal_output
+                    .after(ProcessSystems::RouteWrites)
+                    .before(TerminalSystems::Process),
+                route_terminal_replies.after(TerminalSystems::Process),
+            ),
         );
     }
 }

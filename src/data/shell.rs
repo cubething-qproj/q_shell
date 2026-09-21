@@ -117,6 +117,29 @@ impl ForegroundProcessGroup {
     }
 }
 
+/// Selects the one process that receives terminal input for a [`Shell`].
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = ForegroundInputProcessTarget)]
+pub struct ForegroundInputProcess(Entity);
+impl ForegroundInputProcess {
+    pub fn new(shell: Entity) -> Self {
+        Self(shell)
+    }
+    pub fn shell(&self) -> Entity {
+        self.0
+    }
+}
+
+/// The process selected to receive terminal input for a [`Shell`].
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = ForegroundInputProcess, linked_spawn)]
+pub struct ForegroundInputProcessTarget(Entity);
+impl ForegroundInputProcessTarget {
+    pub fn process(&self) -> Entity {
+        self.0
+    }
+}
+
 /// Attached to a [`Process`] in the [`ForegroundProcessGroup`].
 /// The inner value is a pointer to a [`Shell`] with an attached
 /// [`ForegroundProcessGroup`]
