@@ -38,9 +38,7 @@ mod tests {
             return;
         }
         probe.transitioned = true;
-        commands
-            .entity(probe.process)
-            .insert(ForegroundInputProcess::new(probe.shell));
+        commands.set_foreground_job(probe.shell, [probe.process], Some(probe.process));
     }
 
     fn observe_foreground_transition(
@@ -200,6 +198,34 @@ mod tests {
 
         app.update();
         assert!(app.world().resource::<FinalWriteProbe>().observed);
+    }
+
+    #[test]
+    fn shell_despawn_cascades_to_all_owned_jobs() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+
+        let terminal = app.world_mut().spawn_empty().id();
+        let shell = app
+            .world_mut()
+            .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
+            .id();
+        app.world_mut()
+            .write_message(ShellSpawnMsg::new(TestProgram, shell));
+        app.world_mut()
+            .write_message(ShellSpawnMsg::new(TestProgram, shell));
+        app.update();
+        let processes = {
+            let world = app.world_mut();
+            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            processes.iter(world).collect::<Vec<_>>()
+        };
+        assert_eq!(processes.len(), 2);
+
+        app.world_mut().despawn(shell);
+        for process in processes {
+            assert!(app.world().get_entity(process).is_err());
+        }
     }
 
     #[test]

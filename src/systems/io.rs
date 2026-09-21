@@ -18,14 +18,42 @@ pub(crate) fn set_shell_foreground(
 pub(crate) fn set_process_foreground(
     added: On<Add, ForegroundInputProcess>,
     foreground: Query<&ForegroundInputProcess>,
+    memberships: Query<&ForegroundProcess>,
     shells: Query<&Shell<TerminalIoEndpoint>>,
     mut commands: Commands,
 ) {
     let foreground = r!(foreground.get(added.entity));
+    if !memberships
+        .get(added.entity)
+        .is_ok_and(|membership| membership.shell() == foreground.shell())
+    {
+        warn!("Removing foreground input selection outside the foreground process group");
+        commands
+            .entity(added.entity)
+            .remove::<ForegroundInputProcess>();
+        return;
+    }
     let shell = r!(shells.get(foreground.shell()));
     commands
         .entity(added.entity)
         .insert(VtForegroundProcess::new(shell.term));
+}
+
+pub(crate) fn clear_process_foreground(
+    removed: On<Remove, ForegroundProcess>,
+    memberships: Query<&ForegroundProcess>,
+    foreground: Query<&ForegroundInputProcess>,
+    mut commands: Commands,
+) {
+    let membership = r!(memberships.get(removed.entity));
+    if foreground
+        .get(removed.entity)
+        .is_ok_and(|foreground| foreground.shell() == membership.shell())
+    {
+        commands
+            .entity(removed.entity)
+            .remove::<ForegroundInputProcess>();
+    }
 }
 
 pub(crate) fn fallback_to_shell_foreground(
@@ -39,6 +67,9 @@ pub(crate) fn fallback_to_shell_foreground(
             return;
         }
         let term = r!(world.get::<Shell<TerminalIoEndpoint>>(shell)).term;
+        if world.get::<TerminalIoEndpoint>(term).is_none() {
+            return;
+        }
         world
             .entity_mut(shell)
             .insert(VtForegroundProcess::new(term));
@@ -261,14 +292,14 @@ mod tests {
     }
 
     #[test]
-    fn backgrounded_process_restores_the_shell_foreground_peer() {
+    fn removing_foreground_membership_clears_input_selection_and_restores_shell() {
         let mut app = App::new();
         app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
         let (terminal, shell, process) = spawn_shell_process(&mut app);
 
         app.world_mut()
             .entity_mut(process)
-            .remove::<ForegroundInputProcess>();
+            .remove::<ForegroundProcess>();
         app.update();
 
         let foreground = app
@@ -354,6 +385,15 @@ mod tests {
                     .entity(terminal)
                     .get::<VtForegroundProcessTarget>()
                     .is_none()
+            );
+            app.world_mut().entity_mut(process).remove::<Process>();
+            app.update();
+            assert!(
+                app.world()
+                    .entity(terminal)
+                    .get::<VtForegroundProcessTarget>()
+                    .is_none(),
+                "process cleanup must not restore foreground state on a closed endpoint"
             );
         }
     }

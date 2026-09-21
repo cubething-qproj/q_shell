@@ -97,10 +97,18 @@ impl<T: ShellIo> ShellTarget<T> {
 #[relationship(relationship_target = ShellJobTarget)]
 pub struct ShellJob(pub Entity);
 
-/// The [`Shell`] which owns this [`Job`].
+/// Processes owned by a [`Shell`].
 #[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ShellJob)]
-pub struct ShellJobTarget(Entity);
+#[relationship_target(relationship = ShellJob, linked_spawn)]
+pub struct ShellJobTarget {
+    #[relationship_target]
+    jobs: Vec<Entity>,
+}
+impl ShellJobTarget {
+    pub fn jobs(&self) -> &[Entity] {
+        &self.jobs
+    }
+}
 
 /// This group gets its stdio piped directly to the [`Terminal`].
 /// **Important:** this should _only_ be set by the shell.
@@ -122,7 +130,7 @@ impl ForegroundProcessGroup {
 #[relationship(relationship_target = ForegroundInputProcessTarget)]
 pub struct ForegroundInputProcess(Entity);
 impl ForegroundInputProcess {
-    pub fn new(shell: Entity) -> Self {
+    pub(crate) fn new(shell: Entity) -> Self {
         Self(shell)
     }
     pub fn shell(&self) -> Entity {
@@ -132,7 +140,7 @@ impl ForegroundInputProcess {
 
 /// The process selected to receive terminal input for a [`Shell`].
 #[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = ForegroundInputProcess, linked_spawn)]
+#[relationship_target(relationship = ForegroundInputProcess)]
 pub struct ForegroundInputProcessTarget(Entity);
 impl ForegroundInputProcessTarget {
     pub fn process(&self) -> Entity {
@@ -152,5 +160,70 @@ impl ForegroundProcess {
     }
     pub fn shell(&self) -> Entity {
         self.0
+    }
+}
+
+/// Atomic shell foreground transitions queued through [`Commands`].
+pub trait ShellCommandsExt {
+    /// Replaces the complete foreground process group and its optional stdin owner.
+    fn set_foreground_job(
+        &mut self,
+        shell: Entity,
+        processes: impl IntoIterator<Item = Entity>,
+        input: Option<Entity>,
+    ) -> &mut Self;
+}
+
+impl ShellCommandsExt for Commands<'_, '_> {
+    fn set_foreground_job(
+        &mut self,
+        shell: Entity,
+        processes: impl IntoIterator<Item = Entity>,
+        input: Option<Entity>,
+    ) -> &mut Self {
+        let processes = processes.into_iter().collect::<Vec<_>>();
+        self.queue(move |world: &mut World| {
+            let Some(group) = world.get::<ForegroundProcessGroup>(shell) else {
+                warn!("Cannot set foreground job for missing shell {shell:?}");
+                return;
+            };
+            if processes
+                .iter()
+                .any(|process| world.get::<Process>(*process).is_none())
+            {
+                warn!("Cannot set foreground job with a dead process");
+                return;
+            }
+            if input.is_some_and(|input| !processes.contains(&input)) {
+                warn!("Foreground input owner must belong to the foreground group");
+                return;
+            }
+
+            let previous = group.processes().to_vec();
+            let previous_input = world
+                .get::<ForegroundInputProcessTarget>(shell)
+                .map(ForegroundInputProcessTarget::process);
+            for process in previous {
+                if let Ok(mut process) = world.get_entity_mut(process) {
+                    process.remove::<ForegroundProcess>();
+                }
+            }
+            if let Some(process) = previous_input
+                && let Ok(mut process) = world.get_entity_mut(process)
+            {
+                process.remove::<ForegroundInputProcess>();
+            }
+            for process in processes {
+                world
+                    .entity_mut(process)
+                    .insert(ForegroundProcess::new(shell));
+            }
+            if let Some(process) = input {
+                world
+                    .entity_mut(process)
+                    .insert(ForegroundInputProcess::new(shell));
+            }
+        });
+        self
     }
 }

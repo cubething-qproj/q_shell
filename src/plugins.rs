@@ -42,6 +42,7 @@ impl ShellIo for TerminalIoEndpoint {
         use crate::systems::io::*;
         app.add_observer(set_shell_foreground);
         app.add_observer(set_process_foreground);
+        app.add_observer(clear_process_foreground);
         app.add_observer(fallback_to_shell_foreground);
         app.add_observer(hang_up_terminal);
         backfill_terminal_foreground(app);
