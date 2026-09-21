@@ -12,7 +12,7 @@ pub(crate) fn set_shell_foreground(
     let shell = r!(shells.get(added.entity));
     commands
         .entity(added.entity)
-        .insert(VtForegroundProcess::new(shell.term));
+        .insert(VtForegroundProcess::new(shell.term()));
 }
 
 pub(crate) fn set_process_foreground(
@@ -36,7 +36,7 @@ pub(crate) fn set_process_foreground(
     let shell = r!(shells.get(foreground.shell()));
     commands
         .entity(added.entity)
-        .insert(VtForegroundProcess::new(shell.term));
+        .insert(VtForegroundProcess::new(shell.term()));
 }
 
 pub(crate) fn clear_process_foreground(
@@ -66,7 +66,7 @@ pub(crate) fn fallback_to_shell_foreground(
         if world.get::<ForegroundInputProcessTarget>(shell).is_some() {
             return;
         }
-        let term = r!(world.get::<Shell<TerminalIoEndpoint>>(shell)).term;
+        let term = r!(world.get::<Shell<TerminalIoEndpoint>>(shell)).term();
         if world.get::<TerminalIoEndpoint>(term).is_none() {
             return;
         }
@@ -89,7 +89,7 @@ pub(crate) fn backfill_terminal_foreground(app: &mut App) {
             .map(|(shell_entity, shell, process)| {
                 (
                     process.map_or(shell_entity, ForegroundInputProcessTarget::process),
-                    shell.term,
+                    shell.term(),
                 )
             })
             .collect::<Vec<_>>()
@@ -215,7 +215,7 @@ mod tests {
         app.update();
         let process = {
             let world = app.world_mut();
-            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            let mut processes = world.query_filtered::<Entity, (With<Process>, With<ShellJob>)>();
             processes
                 .single(world)
                 .expect("the shell should spawn one process")
@@ -379,7 +379,15 @@ mod tests {
             assert_eq!(descriptors.get(fd), None);
         }
         assert!(!process_entity.contains::<VtForegroundProcess>());
-        if !despawn {
+        if despawn {
+            let shell_entity = app.world().entity(shell);
+            assert!(shell_entity.contains::<ShellProcess>());
+            assert!(!shell_entity.contains::<Shell<TerminalIoEndpoint>>());
+            app.world_mut().entity_mut(shell).remove::<Process>();
+            app.update();
+            assert!(app.world().get_entity(shell).is_err());
+            assert!(app.world().get_entity(process).is_err());
+        } else {
             assert!(
                 app.world()
                     .entity(terminal)
@@ -406,6 +414,43 @@ mod tests {
     #[test]
     fn terminal_despawn_sends_hup_and_closes_descriptors() {
         assert_terminal_close_sends_hup(true);
+    }
+
+    #[test]
+    fn terminal_reply_reaches_shell_process_when_no_child_is_foreground() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_message::<VtReplyMsg>();
+
+        let terminal = app.world_mut().spawn_empty().id();
+        let shell = app
+            .world_mut()
+            .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
+            .id();
+        app.update();
+        assert_eq!(
+            app.world()
+                .entity(terminal)
+                .get::<VtForegroundProcessTarget>()
+                .expect("the shell should own the terminal foreground")
+                .process(),
+            shell
+        );
+
+        app.world_mut()
+            .write_message(VtReplyMsg::new(terminal, b"shell reply".to_vec()));
+        app.update();
+        app.update();
+
+        let input = app
+            .world()
+            .entity(shell)
+            .get::<ProcessInputBuffer<Vec<u8>>>()
+            .expect("the shell process should have a byte input buffer")
+            .get(&FileDescriptor::STDIN)
+            .expect("the shell should receive the terminal reply");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0].as_slice(), b"shell reply");
     }
 
     #[test]

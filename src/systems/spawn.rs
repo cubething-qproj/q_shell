@@ -1,10 +1,47 @@
 //! Spawns a [`Process`] in response to a [`ShellSpawnMsg`].
 //!
-//! The terminal entity used for stdio is taken directly from
-//! `Shell { term }`; this system does not query `q_term` types.
+//! The terminal entity used for stdio is taken directly from the target [`Shell`].
 
 use crate::prelude::*;
 use bevy::platform::collections::HashMap;
+
+fn configure_shell_process_io<T: ShellIo>(world: &mut World, shell: Entity) {
+    let terminal_entity = r!(world.get::<Shell<T>>(shell)).term();
+    if world.get::<T>(terminal_entity).is_none() {
+        world.entity_mut(terminal_entity).insert(T::default());
+    }
+    let terminal = {
+        let mut endpoint_query = world.query_filtered::<(), With<T>>();
+        let endpoints = endpoint_query.query(world);
+        world
+            .resource::<IoComponentCache>()
+            .handle::<T>(terminal_entity, &endpoints)
+    };
+    let terminal = r!(terminal);
+    let mut descriptors = r!(world.get_mut::<ProcessFdTable>(shell));
+    descriptors.set(FileDescriptor::STDIN, terminal);
+    descriptors.set(FileDescriptor::STDOUT, terminal);
+    descriptors.set(FileDescriptor::STDERR, terminal);
+}
+
+pub(crate) fn configure_shell_process<T: ShellIo>(
+    added: On<Add, Shell<T>>,
+    mut commands: Commands,
+) {
+    let shell = added.entity;
+    commands.queue(move |world: &mut World| configure_shell_process_io::<T>(world, shell));
+}
+
+pub(crate) fn backfill_shell_processes<T: ShellIo>(app: &mut App) {
+    let shells = {
+        let world = app.world_mut();
+        let mut shells = world.query_filtered::<Entity, With<Shell<T>>>();
+        shells.iter(world).collect::<Vec<_>>()
+    };
+    for shell in shells {
+        configure_shell_process_io::<T>(app.world_mut(), shell);
+    }
+}
 
 pub fn spawn_process<T: ShellIo>(
     mut commands: Commands,
@@ -13,7 +50,7 @@ pub fn spawn_process<T: ShellIo>(
 ) {
     for msg in reader.read() {
         let (shell_id, shell) = c!(q_shell.get(msg.shell));
-        let terminal_entity = shell.term;
+        let terminal_entity = shell.term();
         let prog = msg.prog;
         let argv = msg.argv.clone();
         let environ = msg.environ.clone();
@@ -62,6 +99,15 @@ mod tests {
 
     q_proc::impl_program_label!(TestProgram, "test");
 
+    fn test_process() -> Process {
+        Process {
+            prog: TestProgram.intern(),
+            signal_overrides: HashMap::new(),
+            argv: Vec::new(),
+            environ: HashMap::new(),
+        }
+    }
+
     #[derive(Component, Default)]
     struct CustomShellIo;
 
@@ -76,8 +122,22 @@ mod tests {
 
     fn process_count(app: &mut App) -> usize {
         let world = app.world_mut();
-        let mut processes = world.query_filtered::<Entity, With<Process>>();
+        let mut processes = world.query_filtered::<Entity, (With<Process>, With<ShellJob>)>();
         processes.iter(world).count()
+    }
+
+    fn assert_standard_descriptors<T: IoComponent>(descriptors: &ProcessFdTable, terminal: Entity) {
+        for fd in [
+            FileDescriptor::STDIN,
+            FileDescriptor::STDOUT,
+            FileDescriptor::STDERR,
+        ] {
+            let endpoint = descriptors
+                .get(fd)
+                .expect("the standard descriptor should be open");
+            assert_eq!(endpoint.entity(), terminal);
+            assert_eq!(endpoint.component_type_id(), std::any::TypeId::of::<T>());
+        }
     }
 
     fn remove_terminal_endpoint_once(
@@ -95,9 +155,12 @@ mod tests {
     }
 
     #[test]
-    fn shell_process_uses_its_terminal_endpoint_for_standard_descriptors() {
+    fn shell_and_child_use_the_terminal_endpoint_for_standard_descriptors() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellPlugin::<TerminalIoEndpoint>::default().with_process(test_process()),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
@@ -113,27 +176,28 @@ mod tests {
                 .entity(terminal)
                 .contains::<TerminalIoEndpoint>()
         );
+        let shell_entity = app.world().entity(shell);
+        assert_eq!(
+            shell_entity
+                .get::<Process>()
+                .expect("the shell should be a process")
+                .prog,
+            TestProgram.intern()
+        );
+        assert_standard_descriptors::<TerminalIoEndpoint>(
+            shell_entity
+                .get::<ProcessFdTable>()
+                .expect("the shell process should have descriptors"),
+            terminal,
+        );
 
         let world = app.world_mut();
         let mut processes = world.query_filtered::<(&ProcessFdTable, &ShellJob), With<Process>>();
         let (descriptors, job) = processes
             .single(world)
-            .expect("the shell should spawn one process");
+            .expect("the shell should spawn one child process");
         assert_eq!(job.0, shell);
-        for fd in [
-            FileDescriptor::STDIN,
-            FileDescriptor::STDOUT,
-            FileDescriptor::STDERR,
-        ] {
-            let endpoint = descriptors
-                .get(fd)
-                .expect("the standard descriptor should be open");
-            assert_eq!(endpoint.entity(), terminal);
-            assert_eq!(
-                endpoint.component_type_id(),
-                std::any::TypeId::of::<TerminalIoEndpoint>()
-            );
-        }
+        assert_standard_descriptors::<TerminalIoEndpoint>(descriptors, terminal);
     }
 
     #[test]
@@ -155,19 +219,21 @@ mod tests {
         app.update();
 
         assert!(app.world().entity(terminal).contains::<CustomShellIo>());
+        assert_standard_descriptors::<CustomShellIo>(
+            app.world()
+                .entity(shell)
+                .get::<ProcessFdTable>()
+                .expect("the shell process should have descriptors"),
+            terminal,
+        );
         let process = {
             let world = app.world_mut();
-            let mut processes = world.query_filtered::<(Entity, &ProcessFdTable), With<Process>>();
+            let mut processes = world
+                .query_filtered::<(Entity, &ProcessFdTable), (With<Process>, With<ShellJob>)>();
             let (process, descriptors) = processes
                 .single(world)
-                .expect("only the matching shell backend should spawn a process");
-            assert_eq!(
-                descriptors
-                    .get(FileDescriptor::STDOUT)
-                    .expect("stdout should be open")
-                    .component_type_id(),
-                std::any::TypeId::of::<CustomShellIo>()
-            );
+                .expect("only the matching shell backend should spawn a child process");
+            assert_standard_descriptors::<CustomShellIo>(descriptors, terminal);
             process
         };
 
@@ -201,6 +267,13 @@ mod tests {
         assert!(app.world().entity(terminal).contains::<CustomShellIo>());
 
         app.add_plugins(ShellPlugin::<CustomShellIo>::default());
+        assert_standard_descriptors::<CustomShellIo>(
+            app.world()
+                .entity(shell)
+                .get::<ProcessFdTable>()
+                .expect("registration should backfill shell descriptors"),
+            terminal,
+        );
         app.world_mut()
             .write_message(ShellSpawnMsg::new(TestProgram, shell));
         app.update();

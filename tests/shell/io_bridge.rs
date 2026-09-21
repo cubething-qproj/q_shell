@@ -49,8 +49,16 @@ fn capture_terminal_text(
 }
 
 #[test]
-fn process_output_and_vt_replies_cross_the_full_bridge() {
+fn shell_process_output_and_vt_replies_cross_the_full_bridge() {
     let mut app = get_test_app();
+    app.add_plugins(
+        ShellPlugin::<TerminalIoEndpoint>::default().with_process(Process {
+            prog: BridgeProgram.intern(),
+            signal_overrides: Default::default(),
+            argv: Vec::new(),
+            environ: Default::default(),
+        }),
+    );
     app.init_resource::<BridgeState>();
     app.init_resource::<TerminalText>();
     app.program::<BridgeProgram>()
@@ -65,10 +73,9 @@ fn process_output_and_vt_replies_cross_the_full_bridge() {
         .world_mut()
         .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
         .id();
-    app.world_mut()
-        .write_message(ShellSpawnMsg::new(BridgeProgram, shell));
 
     app.update();
+    assert!(app.world().entity(shell).contains::<Process>());
     assert!(app.world().entity(terminal).contains::<VtReady>());
 
     app.world_mut().resource_mut::<BridgeState>().enabled = true;

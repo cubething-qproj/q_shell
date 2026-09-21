@@ -6,6 +6,10 @@ pub(crate) fn cleanup_removed_process(removed: On<Remove, Process>, mut commands
     let process = removed.entity;
     commands.queue(move |world: &mut World| {
         let mut process = r!(world.get_entity_mut(process));
+        if process.contains::<ShellProcess>() {
+            process.despawn();
+            return;
+        }
         process.remove::<(
             ShellJob,
             ForegroundProcess,
@@ -99,7 +103,7 @@ mod tests {
         app.update();
         let process = {
             let world = app.world_mut();
-            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            let mut processes = world.query_filtered::<Entity, (With<Process>, With<ShellJob>)>();
             processes.single(world).expect("one process should spawn")
         };
 
@@ -179,7 +183,7 @@ mod tests {
         app.update();
         let process = {
             let world = app.world_mut();
-            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            let mut processes = world.query_filtered::<Entity, (With<Process>, With<ShellJob>)>();
             processes.single(world).expect("one process should spawn")
         };
         app.insert_resource(FinalWriteProbe {
@@ -217,7 +221,7 @@ mod tests {
         app.update();
         let processes = {
             let world = app.world_mut();
-            let mut processes = world.query_filtered::<Entity, With<Process>>();
+            let mut processes = world.query_filtered::<Entity, (With<Process>, With<ShellJob>)>();
             processes.iter(world).collect::<Vec<_>>()
         };
         assert_eq!(processes.len(), 2);
@@ -225,6 +229,36 @@ mod tests {
         app.world_mut().despawn(shell);
         for process in processes {
             assert!(app.world().get_entity(process).is_err());
+        }
+    }
+
+    #[test]
+    fn shell_process_removal_despawns_shell_and_owned_jobs() {
+        let mut app = App::new();
+        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+
+        let terminal = app.world_mut().spawn_empty().id();
+        let shell = app
+            .world_mut()
+            .spawn(Shell::<TerminalIoEndpoint>::new(terminal))
+            .id();
+        app.world_mut()
+            .write_message(ShellSpawnMsg::new(TestProgram, shell));
+        app.world_mut()
+            .write_message(ShellSpawnMsg::new(TestProgram, shell));
+        app.update();
+        let jobs = {
+            let world = app.world_mut();
+            let mut jobs = world.query_filtered::<Entity, With<ShellJob>>();
+            jobs.iter(world).collect::<Vec<_>>()
+        };
+
+        app.world_mut().entity_mut(shell).remove::<Process>();
+        app.update();
+
+        assert!(app.world().get_entity(shell).is_err());
+        for job in jobs {
+            assert!(app.world().get_entity(job).is_err());
         }
     }
 

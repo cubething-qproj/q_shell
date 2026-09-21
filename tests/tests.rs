@@ -15,7 +15,6 @@ pub fn get_test_app() -> App {
         TestRunnerPlugin::default(),
         ProcessPlugin,
         TerminalPlugin::default(),
-        ShellPlugin::<TerminalIoEndpoint>::default(),
     ));
     app
 }

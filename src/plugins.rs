@@ -28,6 +28,35 @@ pub enum ShellIoSystems {
     TerminalReplies,
 }
 
+#[derive(Resource, Default)]
+struct ShellLifecycle;
+
+#[derive(Resource)]
+pub(crate) struct DefaultShellProcess<T: ShellIo> {
+    pub(crate) default_process: Process,
+    marker: PhantomData<T>,
+}
+
+impl<T: ShellIo> Default for DefaultShellProcess<T> {
+    fn default() -> Self {
+        Self::new(Process {
+            prog: DefaultShellProgram.intern(),
+            signal_overrides: Default::default(),
+            argv: Vec::new(),
+            environ: Default::default(),
+        })
+    }
+}
+
+impl<T: ShellIo> DefaultShellProcess<T> {
+    pub fn new(default_process: Process) -> Self {
+        Self {
+            default_process,
+            marker: PhantomData,
+        }
+    }
+}
+
 /// An I/O endpoint component that can back a [`Shell`].
 ///
 /// Implementations install the adapter systems for their message lanes. The
@@ -60,6 +89,7 @@ impl ShellIo for TerminalIoEndpoint {
 #[derive(Debug)]
 pub struct ShellPlugin<T: ShellIo = TerminalIoEndpoint> {
     update_schedule: InternedScheduleLabel,
+    process: Process,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -74,8 +104,15 @@ impl<T: ShellIo> ShellPlugin<T> {
     pub fn new(update_schedule: impl ScheduleLabel) -> Self {
         Self {
             update_schedule: update_schedule.intern(),
+            process: DefaultShellProcess::<T>::default().default_process,
             marker: PhantomData,
         }
+    }
+
+    /// Sets the immutable process template used by subsequently created shells.
+    pub fn with_process(mut self, process: Process) -> Self {
+        self.process = process;
+        self
     }
 }
 
@@ -83,8 +120,14 @@ impl<T: ShellIo> Plugin for ShellPlugin<T> {
     fn build(&self, app: &mut App) {
         use crate::systems::{lifecycle::*, spawn::*};
         app.add_message::<ShellSpawnMsg>();
+        app.insert_resource(DefaultShellProcess::<T>::new(self.process.clone()));
         app.register_io_component::<T>();
-        app.add_observer(cleanup_removed_process);
+        app.add_observer(configure_shell_process::<T>);
+        if !app.world().contains_resource::<ShellLifecycle>() {
+            app.init_resource::<ShellLifecycle>();
+            app.add_observer(cleanup_removed_process);
+        }
+        backfill_shell_processes::<T>(app);
         app.configure_sets(
             self.update_schedule,
             (

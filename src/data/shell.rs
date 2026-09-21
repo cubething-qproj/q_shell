@@ -9,21 +9,32 @@ use bevy::{
 };
 use q_proc::prelude::*;
 
-use crate::plugins::ShellIo;
+use crate::plugins::{DefaultShellProcess, ShellIo};
 
-// Kernel equivalent: pty follower.
-// Obviated by single-use.
-/// Marker struct for shell entities. The systems associated with this
-/// struct must be implemented outside this crate.
+/// Default program identity for shell processes without a configured interpreter.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct DefaultShellProgram;
+
+q_proc::impl_program_label!(DefaultShellProgram, "shell");
+
+/// A [`Process`] that controls jobs attached to one terminal.
+///
+/// Constructing a shell requires its immutable process identity and installs
+/// standard descriptors for the selected [`ShellIo`] endpoint.
 #[derive(Component, Reflect, Debug)]
 #[component(immutable, on_add = Shell::<T>::on_add)]
 #[relationship(relationship_target = ShellTarget<T>)]
-#[require(ForegroundProcessGroup)]
+#[require(ForegroundProcessGroup, ShellProcess)]
 pub struct Shell<T: ShellIo = TerminalIoEndpoint> {
     #[relationship]
-    pub term: Entity,
+    term: Entity,
     marker: PhantomData<fn() -> T>,
 }
+
+/// Persistent identity for a shell process after its terminal relationship closes.
+#[derive(Component, Reflect, Debug, Default)]
+#[component(immutable)]
+pub struct ShellProcess;
 
 impl<T: ShellIo> Shell<T> {
     /// Creates a shell attached to `term` and backed by `T`.
@@ -34,12 +45,23 @@ impl<T: ShellIo> Shell<T> {
         }
     }
 
+    /// Returns the controlling terminal entity.
+    pub fn term(&self) -> Entity {
+        self.term
+    }
+
     fn on_add(mut world: DeferredWorld, context: HookContext) {
         let term = world
             .get::<Self>(context.entity)
             .expect("the shell was just inserted")
             .term;
-        world.commands().entity(term).entry::<T>().or_default();
+        let process = world.get_resource::<DefaultShellProcess<T>>().map_or_else(
+            || DefaultShellProcess::<T>::default().default_process,
+            |config| config.default_process.clone(),
+        );
+        let mut commands = world.commands();
+        commands.entity(term).entry::<T>().or_default();
+        commands.entity(context.entity).insert(process);
     }
 }
 
