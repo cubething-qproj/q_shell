@@ -11,6 +11,9 @@ tiny_bail = "0.7"
 q_proc = { git = "https://github.com/cubething-qproj/q_proc" }
 q_term = { git = "https://github.com/cubething-qproj/q_term" }
 
+[dev-dependencies]
+q_test_harness = { git = "https://github.com/cubething-qproj/q_test_harness", version = "^0.1" }
+
 [lints]
 rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
 clippy.too_many_arguments = "allow"
