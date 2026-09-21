@@ -9,5 +9,6 @@ pub mod prelude {
     pub use super::plugins::*;
     pub use bevy::prelude::*;
     pub use q_proc::prelude::*;
+    pub use q_term::prelude::*;
     pub use tiny_bail::prelude::*;
 }

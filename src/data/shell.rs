@@ -1,19 +1,46 @@
 //! A special [`Process`] used to control other processes.
 
-use bevy::prelude::*;
-use bevy::platform::collections::HashMap;
+use std::marker::PhantomData;
+
+use bevy::{
+    ecs::{lifecycle::HookContext, world::DeferredWorld},
+    platform::collections::HashMap,
+    prelude::*,
+};
 use q_proc::prelude::*;
+
+use crate::plugins::ShellIo;
 
 // Kernel equivalent: pty follower.
 // Obviated by single-use.
 /// Marker struct for shell entities. The systems associated with this
 /// struct must be implemented outside this crate.
 #[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = ShellTarget)]
+#[component(immutable, on_add = Shell::<T>::on_add)]
+#[relationship(relationship_target = ShellTarget<T>)]
 #[require(ForegroundProcessGroup)]
-pub struct Shell {
+pub struct Shell<T: ShellIo = TerminalIoEndpoint> {
     #[relationship]
     pub term: Entity,
+    marker: PhantomData<fn() -> T>,
+}
+
+impl<T: ShellIo> Shell<T> {
+    /// Creates a shell attached to `term` and backed by `T`.
+    pub fn new(term: Entity) -> Self {
+        Self {
+            term,
+            marker: PhantomData,
+        }
+    }
+
+    fn on_add(mut world: DeferredWorld, context: HookContext) {
+        let term = world
+            .get::<Self>(context.entity)
+            .expect("the shell was just inserted")
+            .term;
+        world.commands().entity(term).entry::<T>().or_default();
+    }
 }
 
 #[derive(Message, Debug)]
@@ -53,12 +80,15 @@ impl IoComponent for TerminalIoEndpoint {
 
 /// Attached to the terminal when spawning a [`Shell`].
 #[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = Shell)]
-#[require(TerminalIoEndpoint)]
-pub struct ShellTarget(Entity);
-impl ShellTarget {
+#[relationship_target(relationship = Shell<T>)]
+pub struct ShellTarget<T: ShellIo = TerminalIoEndpoint> {
+    #[relationship]
+    shell: Entity,
+    marker: PhantomData<fn() -> T>,
+}
+impl<T: ShellIo> ShellTarget<T> {
     pub fn target(&self) -> Entity {
-        self.0
+        self.shell
     }
 }
 

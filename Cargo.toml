@@ -9,6 +9,7 @@ repository = "https://github.com/cubething-qproj/q_shell"
 bevy = "0.19"
 tiny_bail = "0.7"
 q_proc = { git = "https://github.com/cubething-qproj/q_proc" }
+q_term = { path = "../q_term" }
 
 [lints]
 rust.unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_lint)"] }
