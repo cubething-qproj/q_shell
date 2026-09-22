@@ -8,6 +8,7 @@ use bevy::{
     prelude::*,
 };
 use q_proc::prelude::*;
+use q_term::prelude::LineDiscipline;
 
 use crate::plugins::{DefaultShellProcess, ShellIo};
 
@@ -91,18 +92,41 @@ impl ShellSpawnMsg {
     }
 }
 
+/// Selects the one keyboard-input terminal in an application.
+#[derive(Resource, Reflect, Debug, Clone, Copy)]
+pub struct ActiveShellKeyboardInput(Entity);
+impl ActiveShellKeyboardInput {
+    pub fn new(terminal: Entity) -> Self {
+        Self(terminal)
+    }
+    pub fn terminal(&self) -> Entity {
+        self.0
+    }
+}
+
+/// Input delivered from a terminal endpoint to a process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TerminalInputPayload {
+    /// Terminal bytes.
+    Bytes(Vec<u8>),
+    /// End of file from an empty canonical input buffer.
+    Eof,
+}
+impl IoMessage for TerminalInputPayload {}
+
 /// Marks a terminal entity as a byte-oriented process I/O endpoint.
 #[derive(Component, Reflect, Debug, Default)]
 pub struct TerminalIoEndpoint;
 
 impl IoComponent for TerminalIoEndpoint {
-    type Stdin = Vec<u8>;
+    type Stdin = TerminalInputPayload;
     type Stdout = Vec<u8>;
 }
 
 /// Attached to the terminal when spawning a [`Shell`].
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = Shell<T>)]
+#[require(LineDiscipline)]
 pub struct ShellTarget<T: ShellIo = TerminalIoEndpoint> {
     #[relationship]
     shell: Entity,

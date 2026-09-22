@@ -160,7 +160,7 @@ pub(crate) fn route_terminal_replies(
     replies: Option<MessageReader<VtReplyMsg>>,
     terminals: Query<&VtForegroundProcessTarget, With<TerminalIoEndpoint>>,
     processes: Query<&ProcessFdTable, With<Process>>,
-    mut input: MessageWriter<ProcessInputMsg<Vec<u8>>>,
+    mut input: MessageWriter<ProcessInputMsg<TerminalInputPayload>>,
 ) {
     let mut replies = r!(replies);
     for reply in replies.read() {
@@ -178,7 +178,7 @@ pub(crate) fn route_terminal_replies(
             process,
             FileDescriptor::STDIN,
             endpoint,
-            reply.bytes.clone(),
+            TerminalInputPayload::Bytes(reply.bytes.clone()),
         ));
     }
 }
@@ -445,12 +445,15 @@ mod tests {
         let input = app
             .world()
             .entity(shell)
-            .get::<ProcessInputBuffer<Vec<u8>>>()
-            .expect("the shell process should have a byte input buffer")
+            .get::<ProcessInputBuffer<TerminalInputPayload>>()
+            .expect("the shell process should have a terminal input buffer")
             .get(&FileDescriptor::STDIN)
             .expect("the shell should receive the terminal reply");
         assert_eq!(input.len(), 1);
-        assert_eq!(input[0].as_slice(), b"shell reply");
+        assert_eq!(
+            input[0].as_ref(),
+            &TerminalInputPayload::Bytes(b"shell reply".to_vec())
+        );
     }
 
     #[test]
@@ -466,8 +469,8 @@ mod tests {
         assert!(
             app.world()
                 .entity(process)
-                .get::<ProcessInputBuffer<Vec<u8>>>()
-                .expect("the process should have a byte input buffer")
+                .get::<ProcessInputBuffer<TerminalInputPayload>>()
+                .expect("the process should have a terminal input buffer")
                 .get(&FileDescriptor::STDIN)
                 .is_none()
         );
@@ -476,11 +479,14 @@ mod tests {
         let input = app
             .world()
             .entity(process)
-            .get::<ProcessInputBuffer<Vec<u8>>>()
-            .expect("the process should have a byte input buffer")
+            .get::<ProcessInputBuffer<TerminalInputPayload>>()
+            .expect("the process should have a terminal input buffer")
             .get(&FileDescriptor::STDIN)
             .expect("the next First pass should demux the reply");
         assert_eq!(input.len(), 1);
-        assert_eq!(input[0].as_slice(), b"reply");
+        assert_eq!(
+            input[0].as_ref(),
+            &TerminalInputPayload::Bytes(b"reply".to_vec())
+        );
     }
 }

@@ -2,7 +2,10 @@
 
 use std::marker::PhantomData;
 
-use bevy::ecs::schedule::{ApplyDeferred, InternedScheduleLabel, ScheduleLabel};
+use bevy::{
+    ecs::schedule::{ApplyDeferred, InternedScheduleLabel, ScheduleLabel},
+    input::keyboard::KeyboardInput,
+};
 
 use crate::prelude::*;
 
@@ -113,6 +116,48 @@ impl<T: ShellIo> ShellPlugin<T> {
     pub fn with_process(mut self, process: Process) -> Self {
         self.process = process;
         self
+    }
+}
+
+/// Maps the active marked terminal's host keyboard through canonical q_term line discipline to fd0.
+///
+/// Submitted input is emitted during the configured schedule and becomes visible
+/// to process programs after q_proc demultiplexes it in the next frame's `First`
+/// schedule. Raw-mode keyboard encoding is intentionally deferred until TUI
+/// requirements are known.
+#[derive(Debug)]
+pub struct ShellKeyboardPlugin {
+    update_schedule: InternedScheduleLabel,
+}
+
+impl Default for ShellKeyboardPlugin {
+    fn default() -> Self {
+        Self::new(Update)
+    }
+}
+
+impl ShellKeyboardPlugin {
+    /// Configures the schedule shared by terminal input and shell processing.
+    pub fn new(update_schedule: impl ScheduleLabel) -> Self {
+        Self {
+            update_schedule: update_schedule.intern(),
+        }
+    }
+}
+
+impl Plugin for ShellKeyboardPlugin {
+    fn build(&self, app: &mut App) {
+        use crate::systems::input::*;
+        app.add_message::<KeyboardInput>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.add_message::<TermInputMsg>();
+        app.add_message::<VtWriteMsg>();
+        app.add_systems(
+            self.update_schedule,
+            (keyboard_input, process_line_input)
+                .chain()
+                .in_set(TerminalSystems::Input),
+        );
     }
 }
 
