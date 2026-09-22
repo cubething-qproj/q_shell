@@ -18,7 +18,7 @@ struct TerminalText(String);
 fn bridge_program(
     In(process): In<Entity>,
     mut writes: MessageWriter<ProcessWriteMsg<Vec<u8>>>,
-    mut buffers: Query<&mut ProcessInputBuffer<Vec<u8>>>,
+    mut buffers: Query<&mut ProcessInputBuffer<TerminalInputPayload>>,
     mut state: ResMut<BridgeState>,
 ) {
     if state.enabled && !state.sent {
@@ -27,13 +27,11 @@ fn bridge_program(
     }
 
     let mut buffer = r!(buffers.get_mut(process));
-    state.reply.extend(
-        buffer
-            .remove(&FileDescriptor::STDIN)
-            .unwrap_or_default()
-            .into_iter()
-            .flat_map(|payload| payload.iter().copied().collect::<Vec<_>>()),
-    );
+    for payload in buffer.remove(&FileDescriptor::STDIN).unwrap_or_default() {
+        if let TerminalInputPayload::Bytes(bytes) = payload.as_ref() {
+            state.reply.extend(bytes);
+        }
+    }
 }
 
 fn capture_terminal_text(
