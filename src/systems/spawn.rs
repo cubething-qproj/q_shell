@@ -159,7 +159,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((
             ProcessPlugin,
-            ShellPlugin::<TerminalIoEndpoint>::default().with_process(test_process()),
+            ShellBackendPlugin::<TerminalIoEndpoint>::default().with_process(test_process()),
         ));
 
         let terminal = app.world_mut().spawn_empty().id();
@@ -205,8 +205,8 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((
             ProcessPlugin,
-            ShellPlugin::<TerminalIoEndpoint>::default(),
-            ShellPlugin::<CustomShellIo>::default(),
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+            ShellBackendPlugin::<CustomShellIo>::default(),
         ));
 
         let terminal = app.world_mut().spawn_empty().id();
@@ -266,7 +266,7 @@ mod tests {
             .id();
         assert!(app.world().entity(terminal).contains::<CustomShellIo>());
 
-        app.add_plugins(ShellPlugin::<CustomShellIo>::default());
+        app.add_plugins(ShellBackendPlugin::<CustomShellIo>::default());
         assert_standard_descriptors::<CustomShellIo>(
             app.world()
                 .entity(shell)
@@ -283,7 +283,10 @@ mod tests {
     #[test]
     fn unavailable_terminal_endpoint_prevents_process_spawn() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
@@ -304,7 +307,10 @@ mod tests {
     #[test]
     fn endpoint_removal_before_deferred_spawn_does_not_leave_stale_descriptors() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         app.add_systems(
             Update,
             remove_terminal_endpoint_once

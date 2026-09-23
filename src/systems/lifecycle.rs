@@ -91,7 +91,10 @@ mod tests {
 
     fn assert_process_cleanup(despawn: bool) {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
@@ -132,7 +135,10 @@ mod tests {
     #[test]
     fn foreground_barrier_exposes_the_selected_process_before_programs() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
@@ -170,7 +176,10 @@ mod tests {
     #[test]
     fn cleanup_barrier_updates_foreground_before_final_output_admission() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         app.add_message::<VtWriteMsg>();
 
         let terminal = app.world_mut().spawn_empty().id();
@@ -207,7 +216,10 @@ mod tests {
     #[test]
     fn shell_despawn_cascades_to_all_owned_jobs() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
@@ -235,7 +247,10 @@ mod tests {
     #[test]
     fn shell_process_removal_despawns_shell_and_owned_jobs() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
 
         let terminal = app.world_mut().spawn_empty().id();
         let shell = app
