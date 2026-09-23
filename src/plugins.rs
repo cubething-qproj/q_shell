@@ -1,13 +1,16 @@
 //! The primary [`Plugin`] for q_shell.
 
-use std::marker::PhantomData;
+use std::{any::TypeId, marker::PhantomData, sync::Mutex};
 
 use bevy::{
     ecs::schedule::{ApplyDeferred, InternedScheduleLabel, ScheduleLabel},
     input::keyboard::KeyboardInput,
 };
 
-use crate::prelude::*;
+use crate::{
+    language::{ShellLanguage, ShellLanguageConfig, SimpleShellLanguage},
+    prelude::*,
+};
 
 /// Ordered shell-management phases.
 #[derive(SystemSet, Debug, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -33,6 +36,9 @@ pub enum ShellIoSystems {
 
 #[derive(Resource, Default)]
 struct ShellLifecycle;
+
+#[derive(Resource)]
+struct InstalledShellLanguage(TypeId);
 
 #[derive(Resource)]
 pub(crate) struct DefaultShellProcess<T: ShellIo> {
@@ -90,19 +96,19 @@ impl ShellIo for TerminalIoEndpoint {
 
 /// Registers shell spawning and the selected terminal I/O adapter.
 #[derive(Debug)]
-pub struct ShellPlugin<T: ShellIo = TerminalIoEndpoint> {
+pub struct ShellBackendPlugin<T: ShellIo = TerminalIoEndpoint> {
     update_schedule: InternedScheduleLabel,
     process: Process,
     marker: PhantomData<fn() -> T>,
 }
 
-impl<T: ShellIo> Default for ShellPlugin<T> {
+impl<T: ShellIo> Default for ShellBackendPlugin<T> {
     fn default() -> Self {
         Self::new(Update)
     }
 }
 
-impl<T: ShellIo> ShellPlugin<T> {
+impl<T: ShellIo> ShellBackendPlugin<T> {
     /// Configures the schedule shared by process routing and terminal processing.
     pub fn new(update_schedule: impl ScheduleLabel) -> Self {
         Self {
@@ -116,6 +122,89 @@ impl<T: ShellIo> ShellPlugin<T> {
     pub fn with_process(mut self, process: Process) -> Self {
         self.process = process;
         self
+    }
+}
+
+/// Installs a terminal-backed shell with a configurable language.
+#[derive(Debug)]
+pub struct ShellPlugin<L: ShellLanguage = SimpleShellLanguage> {
+    update_schedule: InternedScheduleLabel,
+    process: Process,
+    language: Mutex<Option<L>>,
+}
+
+impl Default for ShellPlugin<SimpleShellLanguage> {
+    fn default() -> Self {
+        Self::new(Update)
+    }
+}
+
+impl ShellPlugin<SimpleShellLanguage> {
+    /// Configures the update schedule for terminal input and shell processing.
+    pub fn new(update_schedule: impl ScheduleLabel) -> Self {
+        Self {
+            update_schedule: update_schedule.intern(),
+            process: DefaultShellProcess::<TerminalIoEndpoint>::default().default_process,
+            language: Mutex::new(Some(SimpleShellLanguage)),
+        }
+    }
+}
+
+impl<L: ShellLanguage> ShellPlugin<L> {
+    /// Replaces the shell language while retaining the schedule and process template.
+    pub fn with_language<M: ShellLanguage>(self, language: M) -> ShellPlugin<M> {
+        ShellPlugin {
+            update_schedule: self.update_schedule,
+            process: self.process,
+            language: Mutex::new(Some(language)),
+        }
+    }
+
+    /// Sets the immutable process template used by subsequently created shells.
+    pub fn with_process(mut self, process: Process) -> Self {
+        self.process = process;
+        self
+    }
+}
+
+impl<L: ShellLanguage> Plugin for ShellPlugin<L> {
+    fn build(&self, app: &mut App) {
+        if let Some(installed) = app.world().get_resource::<InstalledShellLanguage>() {
+            assert_eq!(
+                installed.0,
+                TypeId::of::<L>(),
+                "only one shell language can be installed"
+            );
+        }
+        app.insert_resource(InstalledShellLanguage(TypeId::of::<L>()));
+
+        if !app.is_plugin_added::<ProcessPlugin>() {
+            app.add_plugins(ProcessPlugin);
+        }
+        if !app.is_plugin_added::<TerminalPlugin>() {
+            app.add_plugins(TerminalPlugin::default());
+        }
+        if !app.is_plugin_added::<ShellBackendPlugin<TerminalIoEndpoint>>() {
+            app.add_plugins(
+                ShellBackendPlugin::<TerminalIoEndpoint>::new(self.update_schedule)
+                    .with_process(self.process.clone()),
+            );
+        }
+        if !app.is_plugin_added::<ShellKeyboardPlugin>() {
+            app.add_plugins(ShellKeyboardPlugin::new(self.update_schedule));
+        }
+
+        let language = self
+            .language
+            .lock()
+            .expect("shell language lock was poisoned")
+            .take()
+            .expect("shell plugin was already built");
+        app.insert_resource(ShellLanguageConfig(language));
+        app.add_systems(
+            self.update_schedule,
+            crate::systems::interpreter::run_shell::<L>.in_set(ProcessSystems::RunPrograms),
+        );
     }
 }
 
@@ -161,7 +250,7 @@ impl Plugin for ShellKeyboardPlugin {
     }
 }
 
-impl<T: ShellIo> Plugin for ShellPlugin<T> {
+impl<T: ShellIo> Plugin for ShellBackendPlugin<T> {
     fn build(&self, app: &mut App) {
         use crate::systems::{lifecycle::*, spawn::*};
         app.add_message::<ShellSpawnMsg>();

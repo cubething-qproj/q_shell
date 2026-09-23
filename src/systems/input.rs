@@ -129,7 +129,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((
             ProcessPlugin,
-            ShellPlugin::<TerminalIoEndpoint>::default(),
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
             ShellKeyboardPlugin::default(),
         ));
         app.add_message::<VtWriteMsg>();
@@ -184,7 +184,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((
             ProcessPlugin,
-            ShellPlugin::<TerminalIoEndpoint>::default(),
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
             ShellKeyboardPlugin::default(),
         ));
 

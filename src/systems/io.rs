@@ -226,7 +226,10 @@ mod tests {
     #[test]
     fn process_output_reaches_terminal_processing_in_the_same_update() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         app.add_message::<VtWriteMsg>();
         app.init_resource::<ObservedWrite>();
         app.add_systems(
@@ -280,7 +283,10 @@ mod tests {
     #[test]
     fn spawned_process_becomes_the_terminal_foreground_peer() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         let (terminal, _, process) = spawn_shell_process(&mut app);
 
         let foreground = app
@@ -294,7 +300,10 @@ mod tests {
     #[test]
     fn removing_foreground_membership_clears_input_selection_and_restores_shell() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         let (terminal, shell, process) = spawn_shell_process(&mut app);
 
         app.world_mut()
@@ -333,7 +342,7 @@ mod tests {
             ))
             .id();
 
-        app.add_plugins(ShellPlugin::<TerminalIoEndpoint>::default());
+        app.add_plugins(ShellBackendPlugin::<TerminalIoEndpoint>::default());
         let foreground = app
             .world()
             .entity(terminal)
@@ -344,7 +353,10 @@ mod tests {
 
     fn assert_terminal_close_sends_hup(despawn: bool) {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         let (terminal, shell, process) = spawn_shell_process(&mut app);
 
         if despawn {
@@ -419,7 +431,10 @@ mod tests {
     #[test]
     fn terminal_reply_reaches_shell_process_when_no_child_is_foreground() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         app.add_message::<VtReplyMsg>();
 
         let terminal = app.world_mut().spawn_empty().id();
@@ -459,7 +474,10 @@ mod tests {
     #[test]
     fn terminal_reply_reaches_foreground_process_on_the_next_first_pass() {
         let mut app = App::new();
-        app.add_plugins((ProcessPlugin, ShellPlugin::<TerminalIoEndpoint>::default()));
+        app.add_plugins((
+            ProcessPlugin,
+            ShellBackendPlugin::<TerminalIoEndpoint>::default(),
+        ));
         app.add_message::<VtReplyMsg>();
         let (terminal, _, process) = spawn_shell_process(&mut app);
 

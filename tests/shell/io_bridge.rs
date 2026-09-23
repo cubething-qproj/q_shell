@@ -49,14 +49,12 @@ fn capture_terminal_text(
 #[test]
 fn shell_process_output_and_vt_replies_cross_the_full_bridge() {
     let mut app = get_test_app();
-    app.add_plugins(
-        ShellPlugin::<TerminalIoEndpoint>::default().with_process(Process {
-            prog: BridgeProgram.intern(),
-            signal_overrides: Default::default(),
-            argv: Vec::new(),
-            environ: Default::default(),
-        }),
-    );
+    app.add_plugins(ShellPlugin::default().with_process(Process {
+        prog: BridgeProgram.intern(),
+        signal_overrides: Default::default(),
+        argv: Vec::new(),
+        environ: Default::default(),
+    }));
     app.init_resource::<BridgeState>();
     app.init_resource::<TerminalText>();
     app.program::<BridgeProgram>()
