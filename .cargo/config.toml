@@ -5,6 +5,8 @@
 codegen-backend = true
 
 [profile.dev]
+# cranelift currently has broken intrinsics
+# codegen-backend = "cranelift"
 codegen-backend = "llvm"
 
 # Linux builds
