@@ -11,16 +11,9 @@ NIXGL := env("NIXGL", "nixVulkanNvidia")
 _default:
     just --list
 
-# Set up and synchronize qproj repositories.
-sync *args:
-    {{ qproj }} sync {{ args }}
-
+# Install the shared CLI.
 sync-scripts:
     uv tool install qproj-scripts --from {{ SCRIPTS_SRC }}
-
-# Initialize a new downstream repository.
-init *args:
-    {{ qproj }} init {{ args }}
 
 # Build the workspace.
 [working-directory: '.']
