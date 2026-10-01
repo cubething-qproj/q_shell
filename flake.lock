@@ -1,34 +1,5 @@
 {
   "nodes": {
-    "bevy_cli": {
-      "inputs": {
-        "flake-utils": [
-          "infra",
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "infra",
-          "nixpkgs"
-        ],
-        "rust-overlay": [
-          "infra",
-          "rust-overlay"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789153659,
-        "narHash": "sha256-IZI75UjsbesQ7MV3P68DIyQGhjaLRjK8Y9jbkRnyOe8=",
-        "owner": "TheBevyFlock",
-        "repo": "bevy_cli",
-        "rev": "1cccc95a22aae532cefd7d9a1e92a6073c221930",
-        "type": "github"
-      },
-      "original": {
-        "owner": "TheBevyFlock",
-        "repo": "bevy_cli",
-        "type": "github"
-      }
-    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -49,17 +20,16 @@
     },
     "infra": {
       "inputs": {
-        "bevy_cli": "bevy_cli",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1790444056,
-        "narHash": "sha256-bkGeChVA0BK0Ag7pKego/hbOMwTmu10ceEE1P7AHfoY=",
+        "lastModified": 1790814199,
+        "narHash": "sha256-42d9t8NJDkJmQyAjlqT8Id9HzeMa1ApdSSyR40XKguA=",
         "owner": "cubething-qproj",
         "repo": "infra",
-        "rev": "37d1b25ac6f99629371dadab2df083ceea65da50",
+        "rev": "fc326681399c5b80e37aac730c12cfee56e1288d",
         "type": "github"
       },
       "original": {
