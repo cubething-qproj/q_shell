@@ -6,7 +6,6 @@ QPROJ_REF := env("QPROJ_SCRIPTS_REF", "main")
 QPROJ_GIT_URL := "git+https://github.com/cubething-qproj/infra.git@" + QPROJ_REF + "#subdirectory=scripts"
 SCRIPTS_SRC := env("QPROJ_SCRIPTS_SRC", QPROJ_GIT_URL)
 qproj := "qproj-scripts"
-NIXGL := env("NIXGL", "nixVulkanNvidia")
 
 _default:
     just --list
@@ -23,8 +22,7 @@ build *args:
 # Run the application.
 [working-directory: '.']
 play *args:
-    nix run --impure github:nix-community/nixGL#{{ NIXGL }} -- \
-        {{ qproj }} play {{ args }}
+    {{ qproj }} play {{ args }}
 
 # Lint with Clippy.
 [working-directory: '.']
