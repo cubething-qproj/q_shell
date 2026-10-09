@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 struct BridgeProgram;
 
 q_proc::impl_program_label!(BridgeProgram, "bridge-test");
@@ -16,20 +16,20 @@ struct BridgeState {
 struct TerminalText(String);
 
 fn bridge_program(
-    In(process): In<Entity>,
     mut writes: MessageWriter<ProcessWriteMsg<Vec<u8>>>,
-    mut buffers: Query<&mut ProcessInputBuffer<TerminalInputPayload>>,
+    mut buffers: Query<(Entity, &mut ProcessInputBuffer<TerminalInputPayload>), With<BridgeProgram>>,
     mut state: ResMut<BridgeState>,
 ) {
-    if state.enabled && !state.sent {
-        state.sent = true;
-        writes.write(ProcessWriteMsg::stdout(process, b"hello\x1b[5n".to_vec()));
-    }
+    for (process, mut buffer) in &mut buffers {
+        if state.enabled && !state.sent {
+            state.sent = true;
+            writes.write(ProcessWriteMsg::stdout(process, b"hello\x1b[5n".to_vec()));
+        }
 
-    let mut buffer = r!(buffers.get_mut(process));
-    for payload in buffer.remove(&FileDescriptor::STDIN).unwrap_or_default() {
-        if let TerminalInputPayload::Bytes(bytes) = payload.as_ref() {
-            state.reply.extend(bytes);
+        for payload in buffer.remove(&FileDescriptor::STDIN).unwrap_or_default() {
+            if let TerminalInputPayload::Bytes(bytes) = payload.as_ref() {
+                state.reply.extend(bytes);
+            }
         }
     }
 }
@@ -58,7 +58,7 @@ fn shell_process_output_and_vt_replies_cross_the_full_bridge() {
     app.init_resource::<BridgeState>();
     app.init_resource::<TerminalText>();
     app.program::<BridgeProgram>()
-        .add_system(Update, bridge_program);
+        .add_systems(Update, bridge_program);
     app.add_systems(PostUpdate, capture_terminal_text);
 
     let terminal = app

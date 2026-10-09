@@ -14,7 +14,7 @@ use bevy::{prelude::*, window::WindowResolution};
 use q_query_lang::QueryPlan;
 use q_shell::prelude::*;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 struct QueryProgram;
 
 q_proc::impl_program_label!(QueryProgram, "q");
@@ -41,7 +41,7 @@ fn main() {
         ShellPlugin::default(),
     ));
     app.register_type::<Health>().register_type::<Enemy>();
-    app.program::<QueryProgram>().add_system(Update, run_query);
+    app.program::<QueryProgram>().add_systems(Update, run_query);
     app.add_systems(Startup, (setup, spawn_scene));
     app.run();
 }
@@ -74,19 +74,28 @@ fn spawn_scene(mut commands: Commands) {
     ));
 }
 
-/// Runs `argv` as one query. Exclusive, because executing needs `&mut World`.
-fn run_query(In(process): In<Entity>, world: &mut World) {
-    let query = r!(world.get::<Process>(process)).argv.join(" ");
+/// Runs each invocation's `argv` as one query. Exclusive, because executing
+/// needs `&mut World`.
+fn run_query(world: &mut World) {
+    let invocations: Vec<(Entity, String)> = world
+        .query_filtered::<(Entity, &Process), With<QueryProgram>>()
+        .iter(world)
+        .map(|(process, info)| (process, info.argv.join(" ")))
+        .collect();
     let registry = world.resource::<AppTypeRegistry>().clone();
-    let result = QueryPlan::new(&query, &registry.read())
-        .map_err(|error| error.to_string())
-        .and_then(|plan| plan.execute(world).map_err(|error| error.to_string()));
-    let write = match result {
-        Ok(result) => ProcessWriteMsg::stdout(process, terminal_bytes(&result.to_string())),
-        Err(error) => ProcessWriteMsg::stderr(process, terminal_bytes(&format!("q: {error}\n"))),
-    };
-    world.write_message(write);
-    world.entity_mut(process).remove::<Process>();
+    for (process, query) in invocations {
+        let result = QueryPlan::new(&query, &registry.read())
+            .map_err(|error| error.to_string())
+            .and_then(|plan| plan.execute(world).map_err(|error| error.to_string()));
+        let write = match result {
+            Ok(result) => ProcessWriteMsg::stdout(process, terminal_bytes(&result.to_string())),
+            Err(error) => {
+                ProcessWriteMsg::stderr(process, terminal_bytes(&format!("q: {error}\n")))
+            }
+        };
+        world.write_message(write);
+        world.entity_mut(process).remove::<Process>();
+    }
 }
 
 /// The terminal needs `\r\n` line endings.

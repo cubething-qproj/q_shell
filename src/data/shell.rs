@@ -13,7 +13,7 @@ use q_term::prelude::LineDiscipline;
 use crate::plugins::{DefaultShellProcess, ShellIo};
 
 /// Default program identity for shell processes without a configured interpreter.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct DefaultShellProgram;
 
 q_proc::impl_program_label!(DefaultShellProgram, "shell");

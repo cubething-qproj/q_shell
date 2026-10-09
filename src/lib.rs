@@ -3,7 +3,7 @@
 //! `ShellPlugin::default()` installs the q_proc process layer, q_term terminal,
 //! canonical keyboard adapter, and a small interactive language.
 //!
-//! Registering a q_proc program with `app.program::<T>().add_system(...)`
+//! Registering a q_proc program with `app.program::<T>().add_systems(...)`
 //! makes its validated `ProgramName` available as a shell command, even after
 //! the shell plugin is installed. A `Process` receives argument tokens in
 //! `argv` **without** the program name; programs choose their own argument
