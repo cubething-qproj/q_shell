@@ -21,21 +21,17 @@ pub(crate) fn run_shell<L: ShellLanguage>(
     mut shells: Query<
         (
             Entity,
-            &Process,
             &mut ProcessInputBuffer<TerminalInputPayload>,
             Option<&mut ShellExecution>,
         ),
-        With<Shell<TerminalIoEndpoint>>,
+        (With<DefaultShellProgram>, With<Shell<TerminalIoEndpoint>>),
     >,
     jobs: Query<&ShellJobTarget>,
     programs: Res<Programs>,
     language: Res<ShellLanguageConfig<L>>,
     mut writes: MessageWriter<ProcessWriteMsg<Vec<u8>>>,
 ) {
-    for (shell, process, mut input, execution) in &mut shells {
-        if process.prog != DefaultShellProgram.intern() {
-            continue;
-        }
+    for (shell, mut input, execution) in &mut shells {
         let Some(mut execution) = execution else {
             commands.entity(shell).insert(ShellExecution::default());
             prompt(shell, &mut writes);
@@ -75,7 +71,12 @@ pub(crate) fn run_shell<L: ShellLanguage>(
         match language.0.parse(source) {
             Ok(ShellIr::Empty) => prompt(shell, &mut writes),
             Ok(ShellIr::Command { program, arguments }) => {
-                if let Some(program_label) = programs.get_by_name(&program) {
+                if program == DefaultShellProgram.name().name() {
+                    // TODO(#26): temporary. A child shell process would have no
+                    // terminal of its own and never exit; remove with subshells.
+                    write_error(shell, "shell: subshells are not supported yet", &mut writes);
+                    prompt(shell, &mut writes);
+                } else if let Some(program_label) = programs.get_by_name(&program) {
                     commands.write_message(ShellSpawnMsg::with_args(
                         program_label,
                         shell,

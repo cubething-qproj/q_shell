@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::prelude::*;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 struct EchoProgram;
 q_proc::impl_program_label!(EchoProgram, "echo");
 
@@ -13,22 +13,22 @@ struct Invocations {
 }
 
 fn run_echo(
-    In(process): In<Entity>,
-    processes: Query<&Process>,
+    processes: Query<(Entity, &Process), With<EchoProgram>>,
     mut invocations: ResMut<Invocations>,
     mut commands: Commands,
     mut writes: MessageWriter<ProcessWriteMsg<Vec<u8>>>,
 ) {
-    let process_info = processes.get(process).unwrap();
-    if invocations.args.is_empty() {
-        invocations.args.push(process_info.argv.clone());
-        writes.write(ProcessWriteMsg::stdout(
-            process,
-            format!("{}\r\n", process_info.argv.join(" ")).into_bytes(),
-        ));
-    }
-    if invocations.finish {
-        commands.entity(process).remove::<Process>();
+    for (process, process_info) in &processes {
+        if invocations.args.is_empty() {
+            invocations.args.push(process_info.argv.clone());
+            writes.write(ProcessWriteMsg::stdout(
+                process,
+                format!("{}\r\n", process_info.argv.join(" ")).into_bytes(),
+            ));
+        }
+        if invocations.finish {
+            commands.entity(process).remove::<Process>();
+        }
     }
 }
 
@@ -79,7 +79,7 @@ fn default_plugin_dispatches_registered_programs_and_waits_for_jobs() {
     let (mut app, terminal, shell) = setup(ShellPlugin::default());
     app.init_resource::<Invocations>();
     // Registration after the shell is running still makes the program available.
-    app.program::<EchoProgram>().add_system(Update, run_echo);
+    app.program::<EchoProgram>().add_systems(Update, run_echo);
     assert_eq!(terminal_text(&app, terminal).matches("$ ").count(), 1);
 
     submit(&mut app, terminal, "echo \"hello world\" a\\ b");
@@ -141,7 +141,7 @@ impl ShellLanguage for EchoOnlyLanguage {
 fn a_custom_language_uses_the_same_registered_program_path() {
     let (mut app, terminal, _) = setup(ShellPlugin::default().with_language(EchoOnlyLanguage));
     app.init_resource::<Invocations>();
-    app.program::<EchoProgram>().add_system(Update, run_echo);
+    app.program::<EchoProgram>().add_systems(Update, run_echo);
     submit(&mut app, terminal, "anything at all");
     app.update();
     assert_eq!(

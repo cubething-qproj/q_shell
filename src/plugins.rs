@@ -110,6 +110,11 @@ impl<T: ShellIo> Default for ShellBackendPlugin<T> {
 
 impl<T: ShellIo> ShellBackendPlugin<T> {
     /// Configures the schedule shared by process routing and terminal processing.
+    ///
+    /// q_proc installs process I/O routing in the standard update schedules,
+    /// and in any custom schedule a program adds systems to. For a custom
+    /// `update_schedule`, register a program there (as [`ShellPlugin`] does) or
+    /// its process sets are empty.
     pub fn new(update_schedule: impl ScheduleLabel) -> Self {
         Self {
             update_schedule: update_schedule.intern(),
@@ -126,6 +131,9 @@ impl<T: ShellIo> ShellBackendPlugin<T> {
 }
 
 /// Installs a terminal-backed shell with a configurable language.
+///
+/// Add this plugin before spawning [`Shell`]s: a shell spawned earlier never
+/// receives its program marker, so the interpreter never runs for it.
 #[derive(Debug)]
 pub struct ShellPlugin<L: ShellLanguage = SimpleShellLanguage> {
     update_schedule: InternedScheduleLabel,
@@ -201,9 +209,9 @@ impl<L: ShellLanguage> Plugin for ShellPlugin<L> {
             .take()
             .expect("shell plugin was already built");
         app.insert_resource(ShellLanguageConfig(language));
-        app.add_systems(
+        app.program::<DefaultShellProgram>().add_systems(
             self.update_schedule,
-            crate::systems::interpreter::run_shell::<L>.in_set(ProcessSystems::RunPrograms),
+            crate::systems::interpreter::run_shell::<L>,
         );
     }
 }

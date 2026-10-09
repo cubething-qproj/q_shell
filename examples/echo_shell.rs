@@ -7,7 +7,7 @@
 use bevy::{prelude::*, window::WindowResolution};
 use q_shell::prelude::*;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 struct EchoProgram;
 
 q_proc::impl_program_label!(EchoProgram, "echo");
@@ -25,7 +25,7 @@ fn main() {
         }),
         ShellPlugin::default(),
     ));
-    app.program::<EchoProgram>().add_system(Update, run_echo);
+    app.program::<EchoProgram>().add_systems(Update, run_echo);
     app.add_systems(Startup, setup);
     app.run();
 }
@@ -47,14 +47,14 @@ fn setup(mut commands: Commands) {
 }
 
 fn run_echo(
-    In(process): In<Entity>,
-    processes: Query<&Process>,
+    processes: Query<(Entity, &Process), With<EchoProgram>>,
     mut writes: MessageWriter<ProcessWriteMsg<Vec<u8>>>,
     mut commands: Commands,
 ) {
-    let process_info = r!(processes.get(process));
-    let mut output = process_info.argv.join(" ").into_bytes();
-    output.extend_from_slice(b"\r\n");
-    writes.write(ProcessWriteMsg::stdout(process, output));
-    commands.entity(process).remove::<Process>();
+    for (process, process_info) in &processes {
+        let mut output = process_info.argv.join(" ").into_bytes();
+        output.extend_from_slice(b"\r\n");
+        writes.write(ProcessWriteMsg::stdout(process, output));
+        commands.entity(process).exit(0);
+    }
 }
