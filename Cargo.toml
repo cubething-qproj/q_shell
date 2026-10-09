@@ -14,6 +14,7 @@ q_term = { git = "https://github.com/cubething-qproj/q_term" }
 
 [dev-dependencies]
 q_test_harness = { git = "https://github.com/cubething-qproj/q_test_harness", version = "^0.1" }
+q_query_lang = { git = "https://github.com/cubething-qproj/q_query_lang" }
 
 [features]
 dylib = ["bevy/dynamic_linking"]
