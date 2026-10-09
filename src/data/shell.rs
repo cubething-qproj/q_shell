@@ -13,10 +13,9 @@ use q_term::prelude::LineDiscipline;
 use crate::plugins::{DefaultShellProcess, ShellIo};
 
 /// Default program identity for shell processes without a configured interpreter.
-#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, ProgramLabel)]
+#[program_label("shell")]
 pub struct DefaultShellProgram;
-
-q_proc::impl_program_label!(DefaultShellProgram, "shell");
 
 /// A [`Process`] that controls jobs attached to one terminal.
 ///

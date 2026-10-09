@@ -94,10 +94,9 @@ mod tests {
 
     use super::*;
 
-    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, ProgramLabel)]
+    #[program_label("test")]
     struct TestProgram;
-
-    q_proc::impl_program_label!(TestProgram, "test");
 
     fn test_process() -> Process {
         Process {

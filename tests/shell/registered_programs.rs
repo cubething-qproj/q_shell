@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::prelude::*;
 
-#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, ProgramLabel)]
+#[program_label("echo")]
 struct EchoProgram;
-q_proc::impl_program_label!(EchoProgram, "echo");
 
 #[derive(Resource, Default)]
 struct Invocations {

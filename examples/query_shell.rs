@@ -14,10 +14,9 @@ use bevy::{prelude::*, window::WindowResolution};
 use q_query_lang::QueryPlan;
 use q_shell::prelude::*;
 
-#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, ProgramLabel)]
+#[program_label("q")]
 struct QueryProgram;
-
-q_proc::impl_program_label!(QueryProgram, "q");
 
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]

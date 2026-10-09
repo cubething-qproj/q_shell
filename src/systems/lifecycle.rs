@@ -16,10 +16,9 @@ pub(crate) fn cleanup_removed_process(removed: On<Remove, Process>, mut commands
 mod tests {
     use super::*;
 
-    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, ProgramLabel)]
+    #[program_label("test")]
     struct TestProgram;
-
-    q_proc::impl_program_label!(TestProgram, "test");
 
     #[derive(Resource)]
     struct ForegroundProbe {

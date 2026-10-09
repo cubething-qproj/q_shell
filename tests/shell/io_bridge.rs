@@ -1,9 +1,8 @@
 use crate::prelude::*;
 
-#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, ProgramLabel)]
+#[program_label("bridge-test")]
 struct BridgeProgram;
-
-q_proc::impl_program_label!(BridgeProgram, "bridge-test");
 
 #[derive(Resource, Default)]
 struct BridgeState {

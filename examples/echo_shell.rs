@@ -7,10 +7,9 @@
 use bevy::{prelude::*, window::WindowResolution};
 use q_shell::prelude::*;
 
-#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, Eq, Hash, PartialEq, ProgramLabel)]
+#[program_label("echo")]
 struct EchoProgram;
-
-q_proc::impl_program_label!(EchoProgram, "echo");
 
 fn main() {
     let mut app = App::new();
