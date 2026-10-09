@@ -55,6 +55,6 @@ fn run_echo(
         let mut output = process_info.argv.join(" ").into_bytes();
         output.extend_from_slice(b"\r\n");
         writes.write(ProcessWriteMsg::stdout(process, output));
-        commands.entity(process).remove::<Process>();
+        commands.entity(process).exit(0);
     }
 }

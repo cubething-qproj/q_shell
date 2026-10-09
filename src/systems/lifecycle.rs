@@ -5,17 +5,10 @@ use crate::prelude::*;
 pub(crate) fn cleanup_removed_process(removed: On<Remove, Process>, mut commands: Commands) {
     let process = removed.entity;
     commands.queue(move |world: &mut World| {
-        let mut process = r!(world.get_entity_mut(process));
+        let process = r!(world.get_entity_mut(process));
         if process.contains::<ShellProcess>() {
             process.despawn();
-            return;
         }
-        process.remove::<(
-            ShellJob,
-            ForegroundProcess,
-            ForegroundInputProcess,
-            VtForegroundProcess,
-        )>();
     });
 }
 
@@ -72,7 +65,7 @@ mod tests {
         }
         probe.exited = true;
         writes.write(ProcessWriteMsg::stdout(probe.process, b"final".to_vec()));
-        commands.entity(probe.process).remove::<Process>();
+        commands.entity(probe.process).try_despawn();
     }
 
     fn observe_final_write_admission(
@@ -117,13 +110,8 @@ mod tests {
         }
         app.update();
 
-        if !despawn {
-            let process_entity = app.world().entity(process);
-            assert!(!process_entity.contains::<ShellJob>());
-            assert!(!process_entity.contains::<ForegroundProcess>());
-            assert!(!process_entity.contains::<ForegroundInputProcess>());
-            assert!(!process_entity.contains::<VtForegroundProcess>());
-        }
+        // An ended process is despawned either way.
+        assert!(app.world().get_entity(process).is_err());
         let foreground = app
             .world()
             .entity(terminal)

@@ -87,14 +87,18 @@ fn run_query(world: &mut World) {
         let result = QueryPlan::new(&query, &registry.read())
             .map_err(|error| error.to_string())
             .and_then(|plan| plan.execute(world).map_err(|error| error.to_string()));
-        let write = match result {
-            Ok(result) => ProcessWriteMsg::stdout(process, terminal_bytes(&result.to_string())),
-            Err(error) => {
-                ProcessWriteMsg::stderr(process, terminal_bytes(&format!("q: {error}\n")))
-            }
+        let (write, code) = match result {
+            Ok(result) => (
+                ProcessWriteMsg::stdout(process, terminal_bytes(&result.to_string())),
+                0,
+            ),
+            Err(error) => (
+                ProcessWriteMsg::stderr(process, terminal_bytes(&format!("q: {error}\n"))),
+                1,
+            ),
         };
         world.write_message(write);
-        world.entity_mut(process).remove::<Process>();
+        world.entity_mut(process).exit(code);
     }
 }
 
