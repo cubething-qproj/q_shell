@@ -109,7 +109,8 @@ pub(crate) fn hang_up_terminal(
     signals: Option<MessageWriter<SignalMsg>>,
     mut commands: Commands,
 ) {
-    let shell = r!(terminals.get(removed.entity)).target();
+    // The shell may already have exited, leaving nothing to hang up.
+    let shell = rq!(terminals.get(removed.entity)).target();
     if let Ok(foreground) = foreground.get(removed.entity) {
         commands
             .entity(foreground.process())

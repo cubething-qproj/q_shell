@@ -15,7 +15,7 @@ pub(crate) fn keyboard_input(
 ) {
     use bevy::input::keyboard::Key;
 
-    let terminal = r!(active).terminal();
+    let terminal = rq!(active).terminal();
     if !terminals.contains(terminal) {
         warn!("The active shell keyboard terminal has no attached shell");
         return;
