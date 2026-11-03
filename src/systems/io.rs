@@ -5,7 +5,7 @@ use std::any::TypeId;
 use crate::prelude::*;
 
 pub(crate) fn set_shell_foreground(
-    added: On<Add, Shell<TerminalIoEndpoint>>,
+    added: On<Add<Shell<TerminalIoEndpoint>>>,
     shells: Query<&Shell<TerminalIoEndpoint>>,
     mut commands: Commands,
 ) {
@@ -16,7 +16,7 @@ pub(crate) fn set_shell_foreground(
 }
 
 pub(crate) fn set_process_foreground(
-    added: On<Add, ForegroundInputProcess>,
+    added: On<Add<ForegroundInputProcess>>,
     foreground: Query<&ForegroundInputProcess>,
     memberships: Query<&ForegroundProcess>,
     shells: Query<&Shell<TerminalIoEndpoint>>,
@@ -40,7 +40,7 @@ pub(crate) fn set_process_foreground(
 }
 
 pub(crate) fn clear_process_foreground(
-    removed: On<Remove, ForegroundProcess>,
+    removed: On<Remove<ForegroundProcess>>,
     memberships: Query<&ForegroundProcess>,
     foreground: Query<&ForegroundInputProcess>,
     mut commands: Commands,
@@ -57,7 +57,7 @@ pub(crate) fn clear_process_foreground(
 }
 
 pub(crate) fn fallback_to_shell_foreground(
-    removed: On<Remove, ForegroundInputProcess>,
+    removed: On<Remove<ForegroundInputProcess>>,
     foreground: Query<&ForegroundInputProcess>,
     mut commands: Commands,
 ) {
@@ -102,7 +102,7 @@ pub(crate) fn backfill_terminal_foreground(app: &mut App) {
 }
 
 pub(crate) fn hang_up_terminal(
-    removed: On<Remove, TerminalIoEndpoint>,
+    removed: On<Remove<TerminalIoEndpoint>>,
     terminals: Query<&ShellTarget<TerminalIoEndpoint>>,
     jobs: Query<(Entity, &ShellJob)>,
     foreground: Query<&VtForegroundProcessTarget>,

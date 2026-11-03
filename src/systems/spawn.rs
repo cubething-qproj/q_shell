@@ -25,7 +25,7 @@ fn configure_shell_process_io<T: ShellIo>(world: &mut World, shell: Entity) {
 }
 
 pub(crate) fn configure_shell_process<T: ShellIo>(
-    added: On<Add, Shell<T>>,
+    added: On<Add<Shell<T>>>,
     mut commands: Commands,
 ) {
     let shell = added.entity;

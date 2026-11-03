@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-pub(crate) fn cleanup_removed_process(removed: On<Remove, Process>, mut commands: Commands) {
+pub(crate) fn cleanup_removed_process(removed: On<Remove<Process>>, mut commands: Commands) {
     let process = removed.entity;
     commands.queue(move |world: &mut World| {
         let process = r!(world.get_entity_mut(process));
